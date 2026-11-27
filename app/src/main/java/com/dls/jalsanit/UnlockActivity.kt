@@ -71,7 +71,8 @@ class UnlockActivity : AppCompatActivity() {
                 binding.etUnlockPin.isEnabled = true
                 binding.tvUnlockStatus.text = ""
             }
-        }.start()
+        }
+        cooldownTimer?.start()
     }
 
     override fun onDestroy() {
