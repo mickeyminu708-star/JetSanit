@@ -62,11 +62,11 @@ class UnlockActivity : AppCompatActivity() {
         binding.etUnlockPin.isEnabled = false
 
         var remaining = seconds.coerceAtLeast(1L)
-        val tickTask = object : Runnable {
+        val runner = object : Runnable {
             override fun run() {
                 if (remaining > 0L) {
                     binding.tvUnlockStatus.text = "Locked for ${remaining}s after 3 wrong attempts."
-                    remaining -= 1L
+                    remaining = remaining - 1L
                     timerHandler.postDelayed(this, 1000L)
                 } else {
                     binding.btnUnlock.isEnabled = true
@@ -75,8 +75,8 @@ class UnlockActivity : AppCompatActivity() {
                 }
             }
         }
-        cooldownRunnable = tickTask
-        timerHandler.post(tickTask)
+        cooldownRunnable = runner
+        timerHandler.post(runner)
     }
 
     private fun stopCooldownCountdown() {
