@@ -2,7 +2,8 @@ package com.dls.jalsanit
 
 import android.content.Intent
 import android.os.Bundle
-import android.os.CountDownTimer
+import android.os.Handler
+import android.os.Looper
 import androidx.appcompat.app.AppCompatActivity
 import com.dls.jalsanit.databinding.ActivityUnlockBinding
 
@@ -10,7 +11,12 @@ class UnlockActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityUnlockBinding
     private lateinit var securityEngine: SecurityEngine
-    private var timer: CountDownTimer? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var remainingSeconds: Long = 0L
+
+    private val countdownAction = Runnable {
+        tickCooldown()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -29,14 +35,14 @@ class UnlockActivity : AppCompatActivity() {
 
         val activeCooldown = securityEngine.remainingCooldownSeconds()
         if (activeCooldown > 0L) {
-            lockForSeconds(activeCooldown)
+            beginCooldown(activeCooldown)
         }
 
         binding.btnUnlock.setOnClickListener {
             val enteredPin = binding.etUnlockPin.text?.toString().orEmpty()
             when (val result = securityEngine.verifyPin(enteredPin)) {
                 is SecurityEngine.UnlockResult.Unlocked -> {
-                    timer?.cancel()
+                    stopCooldown()
                     val intent = Intent(this, MainActivity::class.java)
                     intent.putExtra(EXTRA_USED_BACKUP_PIN, result.usedBackup)
                     startActivity(intent)
@@ -47,34 +53,39 @@ class UnlockActivity : AppCompatActivity() {
                         "Wrong PIN. ${result.attemptsLeftBeforeCooldown} attempt(s) left before 15s lock."
                 }
                 is SecurityEngine.UnlockResult.CooldownActive -> {
-                    lockForSeconds(result.secondsRemaining)
+                    beginCooldown(result.secondsRemaining)
                 }
             }
         }
     }
 
-    private fun lockForSeconds(seconds: Long) {
-        timer?.cancel()
+    private fun beginCooldown(seconds: Long) {
+        stopCooldown()
+        remainingSeconds = seconds.coerceAtLeast(1L)
         binding.btnUnlock.isEnabled = false
         binding.etUnlockPin.isEnabled = false
+        mainHandler.post(countdownAction)
+    }
 
-        val millis = seconds.coerceAtLeast(1L) * 1000L
-        timer = object : CountDownTimer(millis, 1000L) {
-            override fun onTick(millisUntilFinished: Long) {
-                val left = (millisUntilFinished / 1000L).coerceAtLeast(1L)
-                binding.tvUnlockStatus.text = "Locked for ${left}s after 3 wrong attempts."
-            }
+    private fun tickCooldown() {
+        if (remainingSeconds > 0L) {
+            binding.tvUnlockStatus.text = "Locked for ${remainingSeconds}s after 3 wrong attempts."
+            remainingSeconds -= 1L
+            mainHandler.postDelayed(countdownAction, 1000L)
+        } else {
+            binding.btnUnlock.isEnabled = true
+            binding.etUnlockPin.isEnabled = true
+            binding.tvUnlockStatus.text = ""
+        }
+    }
 
-            override fun onFinish() {
-                binding.btnUnlock.isEnabled = true
-                binding.etUnlockPin.isEnabled = true
-                binding.tvUnlockStatus.text = ""
-            }
-        }.start()
+    private fun stopCooldown() {
+        mainHandler.removeCallbacks(countdownAction)
+        remainingSeconds = 0L
     }
 
     override fun onDestroy() {
-        timer?.cancel()
+        stopCooldown()
         super.onDestroy()
     }
 
