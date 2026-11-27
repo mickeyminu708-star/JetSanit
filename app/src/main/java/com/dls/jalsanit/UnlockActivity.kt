@@ -2,7 +2,8 @@ package com.dls.jalsanit
 
 import android.content.Intent
 import android.os.Bundle
-import android.os.CountDownTimer
+import android.os.Handler
+import android.os.Looper
 import androidx.appcompat.app.AppCompatActivity
 import com.dls.jalsanit.databinding.ActivityUnlockBinding
 
@@ -10,7 +11,8 @@ class UnlockActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityUnlockBinding
     private lateinit var securityEngine: SecurityEngine
-    private var cooldownTimer: CountDownTimer? = null
+    private val timerHandler = Handler(Looper.getMainLooper())
+    private var cooldownRunnable: Runnable? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,7 +38,7 @@ class UnlockActivity : AppCompatActivity() {
             val enteredPin = binding.etUnlockPin.text?.toString().orEmpty()
             when (val result = securityEngine.verifyPin(enteredPin)) {
                 is SecurityEngine.UnlockResult.Unlocked -> {
-                    cooldownTimer?.cancel()
+                    stopCooldownCountdown()
                     val intent = Intent(this, MainActivity::class.java).apply {
                         putExtra(EXTRA_USED_BACKUP_PIN, result.usedBackup)
                     }
@@ -55,28 +57,35 @@ class UnlockActivity : AppCompatActivity() {
     }
 
     private fun startCooldownCountdown(seconds: Long) {
-        cooldownTimer?.cancel()
+        stopCooldownCountdown()
         binding.btnUnlock.isEnabled = false
         binding.etUnlockPin.isEnabled = false
 
-        val totalMs = seconds * 1000L
-        cooldownTimer = object : CountDownTimer(totalMs, 1000L) {
-            override fun onTick(millisUntilFinished: Long) {
-                val secLeft = ((millisUntilFinished + 999L) / 1000L).coerceAtLeast(1L)
-                binding.tvUnlockStatus.text = "Locked for ${secLeft}s after 3 wrong attempts."
-            }
-
-            override fun onFinish() {
-                binding.btnUnlock.isEnabled = true
-                binding.etUnlockPin.isEnabled = true
-                binding.tvUnlockStatus.text = ""
+        var remaining = seconds.coerceAtLeast(1L)
+        val tickTask = object : Runnable {
+            override fun run() {
+                if (remaining > 0L) {
+                    binding.tvUnlockStatus.text = "Locked for ${remaining}s after 3 wrong attempts."
+                    remaining -= 1L
+                    timerHandler.postDelayed(this, 1000L)
+                } else {
+                    binding.btnUnlock.isEnabled = true
+                    binding.etUnlockPin.isEnabled = true
+                    binding.tvUnlockStatus.text = ""
+                }
             }
         }
-        cooldownTimer?.start()
+        cooldownRunnable = tickTask
+        timerHandler.post(tickTask)
+    }
+
+    private fun stopCooldownCountdown() {
+        cooldownRunnable?.let { timerHandler.removeCallbacks(it) }
+        cooldownRunnable = null
     }
 
     override fun onDestroy() {
-        cooldownTimer?.cancel()
+        stopCooldownCountdown()
         super.onDestroy()
     }
 
